@@ -40,7 +40,7 @@ def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
 
 # Initialize the LangChain components
-@st.cache_resource
+# @st.cache_resource
 def chaining(_pages):
     vectorstore = create_vector_store(_pages)
     retriever = vectorstore.as_retriever()
