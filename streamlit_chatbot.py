@@ -18,7 +18,7 @@ from langchain_chroma import Chroma
 # Set the OpenAI API key from Streamlit secrets
 os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
 
-@st.cache_resource
+@st.cache_data
 def load_pdf(_file):
     with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmp_file:
         tmp_file.write(_file.getvalue())
@@ -29,7 +29,7 @@ def load_pdf(_file):
     return pages
 
 # Create a vector store from the document chunks
-@st.cache_resource
+@st.cache_data
 def create_vector_store(_docs):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
     split_docs = text_splitter.split_documents(_docs)
