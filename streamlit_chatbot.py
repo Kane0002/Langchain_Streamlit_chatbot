@@ -12,7 +12,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories.streamlit import StreamlitChatMessageHistory
 
 # Set the OpenAI API key from Streamlit secrets
-
+os.environ["OPENAI_API_KEY "] == st.secrets["OPENAI_API_KEY"]
 @st.cache_resource
 def load_and_split_pdf(file_path):
     loader = PyPDFLoader(file_path)
