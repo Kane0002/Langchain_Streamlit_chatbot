@@ -5,7 +5,6 @@ import tempfile
 from langchain.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -13,6 +12,8 @@ from langchain_core.output_parsers import StrOutputParser
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
+from langchain_chroma import Chroma
 
 # Set the OpenAI API key from Streamlit secrets
 os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
