@@ -1,22 +1,28 @@
 import os
 import streamlit as st
+import tempfile
 
 from langchain.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_community.chat_message_histories.streamlit import StreamlitChatMessageHistory
+from langchain_chroma import Chroma
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+
 
 # Set the OpenAI API key from Streamlit secrets
-os.environ["OPENAI_API_KEY "] = st.secrets["OPENAI_API_KEY"]
+os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
+
 @st.cache_resource
-def load_and_split_pdf(file_path):
-    loader = PyPDFLoader(file_path)
-    return loader.load_and_split()
+def load_pdf(_file):
+    with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmp_file:
+        tmp_file.write(_file.getvalue())
+        tmp_file_path = tmp_file.name
+        # Load the data from the file using Langchain
+        loader = PyPDFLoader(file_path=tmp_file_path)
+        pages = loader.load_and_split()
+    return pages
 
 # Create a vector store from the document chunks
 @st.cache_resource
@@ -26,83 +32,61 @@ def create_vector_store(_docs):
     vectorstore = Chroma.from_documents(split_docs, OpenAIEmbeddings(model='text-embedding-3-small'))
     return vectorstore
 
+def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
 # Initialize the LangChain components
 @st.cache_resource
-def initialize_components(selected_model):
-    file_path = r"C:\Users\gram\Downloads\대한민국헌법(헌법)(제00010호)(19880225).pdf"
-    pages = load_and_split_pdf(file_path)
-    vectorstore = create_vector_store(pages)
+def chaining(_pages):
+    vectorstore = create_vector_store(_pages)
     retriever = vectorstore.as_retriever()
 
-    # Define the contextualize question prompt
-    contextualize_q_system_prompt = """Given a chat history and the latest user question \
-    which might reference context in the chat history, formulate a standalone question \
-    which can be understood without the chat history. Do NOT answer the question, \
-    just reformulate it if needed and otherwise return it as is."""
-    contextualize_q_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", contextualize_q_system_prompt),
-            MessagesPlaceholder("history"),
-            ("human", "{input}"),
-        ]
-    )
-
     # Define the answer question prompt
-    qa_system_prompt = """You are an assistant for question-answering tasks. \
+    qa_system_prompt = """
+    You are an assistant for question-answering tasks. \
     Use the following pieces of retrieved context to answer the question. \
     If you don't know the answer, just say that you don't know. \
     Keep the answer perfect. please use imogi with the answer.
-    대답은 한국어로 하고, 존댓말을 써줘.\
+    Please answer in Korean and use respectful language.\
+    {context}
+    """
 
-    {context}"""
     qa_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", qa_system_prompt),
-            MessagesPlaceholder("history"),
             ("human", "{input}"),
         ]
     )
 
-    llm = ChatOpenAI(model=selected_model)
-    history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
-    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+    llm = ChatOpenAI(model="gpt-4o")
+    rag_chain = (
+        {"context": retriever | format_docs, "input": RunnablePassthrough()}
+        | qa_prompt
+        | llm
+        | StrOutputParser()
+    )
     return rag_chain
 
 # Streamlit UI
-st.header("헌법 Q&A 챗봇 💬 📚")
-option = st.selectbox("Select GPT Model", ("gpt-4o", "gpt-3.5-turbo-0125"))
-rag_chain = initialize_components(option)
-chat_history = StreamlitChatMessageHistory(key="chat_messages")
+st.header("ChatPDF 💬 📚")
+uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
+if uploaded_file is not None:
+    pages = load_pdf(uploaded_file)
 
-conversational_rag_chain = RunnableWithMessageHistory(
-    rag_chain,
-    lambda session_id: chat_history,
-    input_messages_key="input",
-    history_messages_key="history",
-    output_messages_key="answer",
-)
+    rag_chain = chaining(pages)
 
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = [{"role": "assistant", "content": "무엇이든 물어보세요!"}]
 
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [{"role": "assistant", 
-                                     "content": "헌법에 대해 무엇이든 물어보세요!"}]
+    for msg in st.session_state.messages:
+        st.chat_message(msg['role']).write(msg['content'])
 
-for msg in chat_history.messages:
-    st.chat_message(msg.type).write(msg.content)
-
-
-if prompt_message := st.chat_input("Your question"):
-    st.chat_message("human").write(prompt_message)
-    with st.chat_message("ai"):
-        with st.spinner("Thinking..."):
-            config = {"configurable": {"session_id": "any"}}
-            response = conversational_rag_chain.invoke(
-                {"input": prompt_message},
-                config)
-            
-            answer = response['answer']
-            st.write(answer)
-            with st.expander("참고 문서 확인"):
-                for doc in response['context']:
-                    st.markdown(doc.metadata['source'], help=doc.page_content)
+    if prompt_message := st.chat_input("질문을 입력해주세요 :)"):
+        st.chat_message("human").write(prompt_message)
+        st.session_state.messages.append({"role": "user", "content": prompt_message})
+        with st.chat_message("ai"):
+            with st.spinner("Thinking..."):
+                response = rag_chain.invoke(prompt_message)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.write(response)
+                
