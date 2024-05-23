@@ -76,7 +76,7 @@ st.header("ChatPDF 💬 📚")
 uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
 if uploaded_file is not None:
     pages = load_pdf(uploaded_file)
-
+    st.write(pages)
     rag_chain = chaining(pages)
 
     if "messages" not in st.session_state:
