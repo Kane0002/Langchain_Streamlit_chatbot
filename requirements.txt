@@ -3,6 +3,6 @@ langchain
 langchain-community
 langchain-openai
 langchain-core
-chromadb
+langchain-chroma
 pysqlite3-binary
 pypdf
